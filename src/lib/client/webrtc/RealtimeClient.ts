@@ -324,7 +324,13 @@ export class RealtimeClient {
         console.log("Response done event:", event);
         // Check if response contains transcript
         if (event.response && typeof event.response === 'object') {
-          const response = event.response as any;
+          const response = event.response as {
+            output?: Array<{
+              content?: Array<{
+                transcript?: string;
+              }>;
+            }>;
+          };
           if (response.output?.[0]?.content?.[0]?.transcript) {
             console.log("Assistant final transcript:", response.output[0].content[0].transcript);
             this.emit('translation', {
