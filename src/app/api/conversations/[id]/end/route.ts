@@ -4,11 +4,11 @@ import { ObjectId } from 'mongodb';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { db } = await connectToDatabase();
-    const conversationId = params.id;
+    const { id: conversationId } = await params;
     
     // Validate ObjectId
     if (!ObjectId.isValid(conversationId)) {
