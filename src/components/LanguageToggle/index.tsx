@@ -5,10 +5,12 @@ import { switchLanguages } from '@/lib/client/store/conversationSlice';
 
 export function LanguageToggle() {
   const dispatch = useAppDispatch();
-  const { primary, secondary } = useAppSelector(
-    (state) => state.conversation.languages
-  );
+  const languages = useAppSelector((state) => state.conversation.languages);
   const status = useAppSelector((state) => state.conversation.status);
+  
+  // Provide defaults if languages are undefined
+  const primary = languages?.primary || 'en';
+  const secondary = languages?.secondary || 'es';
 
   const handleSwitch = () => {
     dispatch(switchLanguages());

@@ -173,7 +173,7 @@ const conversationSlice = createSlice({
       }>
     ) => {
       state.id = action.payload.id;
-      state.languages = action.payload.languages;
+      state.languages = action.payload.languages || { primary: 'en', secondary: 'es' };
       state.utterances = action.payload.utterances;
       state.actions = action.payload.actions;
       state.status = 'ended'; // Past conversations are ended
