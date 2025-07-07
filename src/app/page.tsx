@@ -7,6 +7,7 @@ import { ActionPanel } from "@/components/ActionPanel";
 import { DetectionModeToggle } from "@/components/DetectionModeToggle";
 import { WebhookConfig } from "@/components/WebhookConfig";
 import { ConversationSummary } from "@/components/ConversationSummary";
+import { TestTranscriptLoader } from "@/components/TestTranscriptLoader";
 
 export default function Home() {
   return (
@@ -22,8 +23,9 @@ export default function Home() {
         </div>
         
         <div className="space-y-8">
-          <div className="flex justify-center">
+          <div className="flex justify-center items-center gap-4">
             <LanguageToggle />
+            <TestTranscriptLoader />
           </div>
           
           {/* Main Content Grid - Two columns now */}
