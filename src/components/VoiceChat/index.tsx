@@ -2,11 +2,30 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { RealtimeClient, ConnectionStatus } from '@/lib/client/webrtc/RealtimeClient';
+import { useAppDispatch, useAppSelector } from '@/lib/client/store/hooks';
+import { 
+  startConversation, 
+  endConversation, 
+  addUtterance, 
+  updateUtteranceTranslation,
+  setProcessing 
+} from '@/lib/client/store/conversationSlice';
 
 export function VoiceChat() {
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
+  const dispatch = useAppDispatch();
+  const languages = useAppSelector((state) => state.conversation.languages);
+  const conversationId = useAppSelector((state) => state.conversation.id);
+  const utterances = useAppSelector((state) => state.conversation.utterances);
+  const lastUtteranceIdRef = useRef<string | null>(null);
+  const getUtterancesRef = useRef<() => typeof utterances>(() => []);
+
+  // Keep the ref updated with current utterances
+  useEffect(() => {
+    getUtterancesRef.current = () => utterances;
+  }, [utterances]);
 
   useEffect(() => {
     // Initialize client
@@ -25,6 +44,41 @@ export function VoiceChat() {
       console.error('VoiceChat error:', err);
     });
 
+    client.on('utterance', async (event) => {
+      console.log('VoiceChat: utterance event received', event);
+      const utterance = {
+        role: event.role,
+        originalText: event.originalText,
+        language: event.language,
+        timestamp: event.timestamp,
+      };
+      dispatch(addUtterance(utterance));
+    });
+
+    client.on('translation', (event) => {
+      console.log('VoiceChat: translation event received', event);
+      // Get the last utterance ID from the Redux store using ref
+      const currentUtterances = getUtterancesRef.current();
+      if (currentUtterances.length > 0) {
+        const lastUtterance = currentUtterances[currentUtterances.length - 1];
+        if (!lastUtterance.translatedText) {
+          console.log('Updating utterance translation:', lastUtterance.id, event.translatedText);
+          dispatch(updateUtteranceTranslation({
+            id: lastUtterance.id,
+            translatedText: event.translatedText,
+          }));
+        }
+      }
+    });
+
+    client.on('speechStart', () => {
+      dispatch(setProcessing(true));
+    });
+
+    client.on('speechEnd', () => {
+      dispatch(setProcessing(false));
+    });
+
     clientRef.current = client;
 
     // Cleanup on unmount
@@ -33,13 +87,60 @@ export function VoiceChat() {
         clientRef.current.disconnect();
       }
     };
-  }, []);
+  }, [dispatch]);
+
+  // Update lastUtteranceIdRef when utterances change and save to database
+  useEffect(() => {
+    if (utterances.length > 0) {
+      const lastUtterance = utterances[utterances.length - 1];
+      lastUtteranceIdRef.current = lastUtterance.id;
+      
+      // Save to database if conversation is active
+      if (conversationId && !lastUtterance.translatedText) {
+        // Only save if it's a new utterance (no translation yet)
+        fetch('/api/utterances', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId,
+            role: lastUtterance.role,
+            originalLanguage: lastUtterance.language,
+            originalText: lastUtterance.originalText,
+            timestamp: lastUtterance.timestamp,
+            sequenceNumber: lastUtterance.sequenceNumber,
+          }),
+        }).catch(error => {
+          console.error('Failed to save utterance:', error);
+        });
+      }
+    }
+  }, [utterances, conversationId]);
 
   const handleStart = async () => {
     try {
       setError(null);
       if (clientRef.current) {
-        await clientRef.current.connect();
+        // Create conversation in database first
+        const conversationResponse = await fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language: languages }),
+        });
+
+        if (!conversationResponse.ok) {
+          throw new Error('Failed to create conversation');
+        }
+
+        const { data } = await conversationResponse.json();
+        
+        // Start Redux conversation
+        dispatch(startConversation({ 
+          id: data.id, 
+          languages 
+        }));
+
+        // Connect WebRTC with language config
+        await clientRef.current.connect({ languages });
       }
     } catch (error) {
       console.error('Failed to start conversation:', error);
@@ -47,9 +148,24 @@ export function VoiceChat() {
     }
   };
 
-  const handleStop = () => {
+  const handleStop = async () => {
     if (clientRef.current) {
       clientRef.current.disconnect();
+    }
+    
+    if (conversationId) {
+      // End conversation in database
+      await fetch(`/api/conversations/${conversationId}/end`, {
+        method: 'POST',
+      });
+    }
+    
+    dispatch(endConversation());
+  };
+
+  const handleRepeat = () => {
+    if (clientRef.current && status === 'connected') {
+      clientRef.current.repeatLast();
     }
   };
 
@@ -129,6 +245,16 @@ export function VoiceChat() {
         >
           Stop
         </button>
+
+        {status === 'connected' && (
+          <button
+            onClick={handleRepeat}
+            className="px-6 py-3 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 transition-colors"
+            title="Repeat last translation"
+          >
+            Repeat
+          </button>
+        )}
       </div>
 
       <div className="text-xs text-gray-500 text-center">
