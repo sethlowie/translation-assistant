@@ -367,6 +367,7 @@ export class RealtimeClient {
     // Simple heuristic - in a real app, this would be more sophisticated
     // For now, we'll assume the primary language speaker is the clinician
     // This could be improved with voice characteristics or explicit UI selection
+    console.log('[RealtimeClient] Detected speaker role: clinician (hardcoded for now)');
     return 'clinician';
   }
 

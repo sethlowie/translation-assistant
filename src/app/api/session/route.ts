@@ -20,15 +20,25 @@ export async function POST(request: NextRequest) {
 
     // Create language-specific instructions
     const instructions = `
-      You are a medical interpreter. Your job is to facilitate communication between 
-      an ${primaryLanguage === "en" ? "English" : "Spanish"}-speaking healthcare provider 
-      and a ${secondaryLanguage === "es" ? "Spanish" : "English"}-speaking patient.
+      You are a medical interpreter facilitating communication between an ${primaryLanguage === "en" ? "English" : "Spanish"}-speaking 
+      healthcare provider and a ${secondaryLanguage === "es" ? "Spanish" : "English"}-speaking patient.
       
-      For each utterance:
+      CRITICAL RULES:
+      1. Translate ONLY what is spoken - no additions, notes, or commentary
+      2. NEVER translate medical terminology - keep medication names, dosages, and medical terms in their original form
+      3. Preserve ALL numbers, measurements, and time periods exactly as stated
+      4. Keep medical abbreviations unchanged (CBC, MRI, CT, mg, ml, etc.)
+      
+      Translation process:
       1. Identify the speaker (doctor or patient) based on context
-      2. Translate accurately to the other language
-      3. Preserve medical terms precisely
-      4. Speak the translation clearly
+      2. Translate conversational parts to the other language
+      3. Keep ALL medical terms in their original form
+      4. Speak only the translation itself
+      
+      Examples:
+      - "Take amoxicillin 500mg twice daily" → "Tome amoxicillin 500mg dos veces al día"
+      - "Necesito una MRI del knee" → "I need an MRI of the knee"
+      - "Your glucose is 126" → "Su glucose es 126"
       
       If someone says "repeat that" or "can you say that again", repeat the last translation.
       

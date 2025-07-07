@@ -10,6 +10,61 @@ export interface Utterance {
   sequenceNumber: number;
 }
 
+// Action detail types based on schema
+interface PrescriptionDetails {
+  medication: {
+    name: string;
+    dosage?: string;
+    frequency?: string;
+    duration?: string;
+    rxnormCode?: string;
+  };
+}
+
+interface LabOrderDetails {
+  labTest: {
+    name: string;
+    loincCode?: string;
+    urgency?: string;
+  };
+}
+
+interface ReferralDetails {
+  referral: {
+    specialty: string;
+    reason: string;
+    urgency: string;
+  };
+}
+
+interface FollowUpDetails {
+  followUp: {
+    timeframe: string;
+    reason: string;
+  };
+}
+
+interface DiagnosticTestDetails {
+  test: {
+    name: string;
+    type?: string;
+    urgency?: string;
+  };
+}
+
+type ActionDetails = PrescriptionDetails | LabOrderDetails | ReferralDetails | FollowUpDetails | DiagnosticTestDetails;
+
+export interface Action {
+  id: string;
+  type: 'prescription' | 'lab_order' | 'referral' | 'follow_up' | 'diagnostic_test';
+  details: ActionDetails;
+  confidence: number;
+  validated: boolean;
+  webhook?: {
+    status: 'pending' | 'sent' | 'failed' | 'acknowledged';
+  };
+}
+
 interface ConversationState {
   id: string | null;
   status: 'idle' | 'active' | 'ended';
@@ -18,8 +73,10 @@ interface ConversationState {
     secondary: 'en' | 'es';
   };
   utterances: Utterance[];
+  actions: Action[];
   currentSpeaker: 'clinician' | 'patient' | null;
   isProcessing: boolean;
+  isActive: boolean;
 }
 
 const initialState: ConversationState = {
@@ -30,8 +87,10 @@ const initialState: ConversationState = {
     secondary: 'es',
   },
   utterances: [],
+  actions: [],
   currentSpeaker: null,
   isProcessing: false,
+  isActive: false,
 };
 
 const conversationSlice = createSlice({
@@ -43,12 +102,15 @@ const conversationSlice = createSlice({
       state.status = 'active';
       state.languages = action.payload.languages;
       state.utterances = [];
+      state.actions = [];
+      state.isActive = true;
     },
     
     endConversation: (state) => {
       state.status = 'ended';
       state.currentSpeaker = null;
       state.isProcessing = false;
+      state.isActive = false;
     },
     
     resetConversation: () => initialState,
@@ -82,6 +144,43 @@ const conversationSlice = createSlice({
     setProcessing: (state, action: PayloadAction<boolean>) => {
       state.isProcessing = action.payload;
     },
+    
+    addAction: (state, action: PayloadAction<Action>) => {
+      state.actions.push(action.payload);
+    },
+    
+    updateActionValidation: (state, action: PayloadAction<{ id: string; validated: boolean }>) => {
+      const actionItem = state.actions.find(a => a.id === action.payload.id);
+      if (actionItem) {
+        actionItem.validated = action.payload.validated;
+      }
+    },
+    
+    updateActionWebhookStatus: (state, action: PayloadAction<{ id: string; status: 'pending' | 'sent' | 'failed' | 'acknowledged' }>) => {
+      const actionItem = state.actions.find(a => a.id === action.payload.id);
+      if (actionItem) {
+        actionItem.webhook = { status: action.payload.status };
+      }
+    },
+    
+    loadConversation: (
+      state,
+      action: PayloadAction<{
+        id: string;
+        languages: ConversationState['languages'];
+        utterances: Utterance[];
+        actions: Action[];
+      }>
+    ) => {
+      state.id = action.payload.id;
+      state.languages = action.payload.languages;
+      state.utterances = action.payload.utterances;
+      state.actions = action.payload.actions;
+      state.status = 'ended'; // Past conversations are ended
+      state.isActive = false;
+      state.isProcessing = false;
+      state.currentSpeaker = null;
+    },
   },
 });
 
@@ -94,6 +193,10 @@ export const {
   switchLanguages,
   setCurrentSpeaker,
   setProcessing,
+  addAction,
+  updateActionValidation,
+  updateActionWebhookStatus,
+  loadConversation,
 } = conversationSlice.actions;
 
 export default conversationSlice.reducer;

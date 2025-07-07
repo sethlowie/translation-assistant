@@ -8,7 +8,9 @@ import {
   endConversation, 
   addUtterance, 
   updateUtteranceTranslation,
-  setProcessing 
+  setProcessing,
+  addAction,
+  type Action
 } from '@/lib/client/store/conversationSlice';
 
 export function VoiceChat() {
@@ -95,26 +97,74 @@ export function VoiceChat() {
       const lastUtterance = utterances[utterances.length - 1];
       lastUtteranceIdRef.current = lastUtterance.id;
       
-      // Save to database if conversation is active
+      // Save to database and detect actions if conversation is active
       if (conversationId && !lastUtterance.translatedText) {
         // Only save if it's a new utterance (no translation yet)
-        fetch('/api/utterances', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId,
-            role: lastUtterance.role,
-            originalLanguage: lastUtterance.language,
-            originalText: lastUtterance.originalText,
-            timestamp: lastUtterance.timestamp,
-            sequenceNumber: lastUtterance.sequenceNumber,
-          }),
-        }).catch(error => {
-          console.error('Failed to save utterance:', error);
-        });
+        const saveAndDetect = async () => {
+          try {
+            // Save utterance
+            const utteranceResponse = await fetch('/api/utterances', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                conversationId,
+                role: lastUtterance.role,
+                originalLanguage: lastUtterance.language,
+                originalText: lastUtterance.originalText,
+                timestamp: lastUtterance.timestamp,
+                sequenceNumber: lastUtterance.sequenceNumber,
+              }),
+            });
+
+            if (utteranceResponse.ok) {
+              const utteranceData = await utteranceResponse.json();
+              
+              // Detect actions if it's a clinician utterance
+              if (lastUtterance.role === 'clinician') {
+                const detectionMode = localStorage.getItem('detectionMode') || 'ai';
+                const actionResponse = await fetch('/api/actions/detect', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    utteranceId: utteranceData.data.id,
+                    conversationId,
+                    utterance: lastUtterance.originalText,
+                    role: lastUtterance.role,
+                    detectionMode,
+                  }),
+                });
+
+                if (actionResponse.ok) {
+                  const { actions } = await actionResponse.json();
+                  // Add detected actions to Redux store
+                  interface ActionResponse {
+                    id: string;
+                    type: Action['type'];
+                    details: Action['details'];
+                    confidence: number;
+                  }
+                  
+                  actions.forEach((action: ActionResponse) => {
+                    dispatch(addAction({
+                      id: action.id,
+                      type: action.type,
+                      details: action.details,
+                      confidence: action.confidence,
+                      validated: false,
+                    }));
+                  });
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Failed to save utterance or detect actions:', error);
+          }
+        };
+
+        saveAndDetect();
       }
     }
-  }, [utterances, conversationId]);
+  }, [utterances, conversationId, dispatch]);
 
   const handleStart = async () => {
     try {
